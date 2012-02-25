@@ -173,7 +173,7 @@ JournalRedis::=
 
       # Check the new transaction against all transactions in the journal
       # since one after the transaction's base version
-      if txns && conflict = transaction.journalConflict txn, txns
+      if txns && conflict = journalConflict txn, txns
         return redisClient.eval UNLOCK, numLocks, locks..., lockVal, (err) ->
           return callback err if err
           callback conflict
@@ -208,6 +208,13 @@ JournalRedis::=
           self._lock args... if args = lockQueue[path].shift()
         , delay
       return callback 'lockMaxRetries', numLocks
+
+
+journalConflict = (txn, txns) ->
+  i = txns.length
+  while i--
+    return value if value = transaction.conflict txn, JSON.parse(txns[i])
+  return false
 
 # Example output:
 # getLocks("a.b.c") => [".a.b.c", ".a.b", ".a"]
