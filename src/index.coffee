@@ -77,21 +77,12 @@ JournalRedis::=
 
   getVer: (callback) -> @_redisClient.get 'ver', callback
 
-  # TODO Combine ver and clientStartId into a vector clock
-  hasInvalidVer: (socket, ver, clientStartId) ->
-    startIdPromise = @_startIdPromise
-    # Don't allow a client to connect unless there is a valid startId to
-    # compare the model's against
-    unless startIdPromise.value
-      socket.disconnect()
-      return true
-    # TODO: Map the client's version number to the Stm's and update the client
-    # with the new startId unless the client's version includes versions that
-    # can't be mapped
-    unless clientStartId && clientStartId == startIdPromise.value
-      socket.emit 'fatalErr', "clientStartId != startId (#{clientStartId} != #{startIdPromise.value})"
-      return true
-    return false
+  checkVer: (ver, clientStartId, callback) ->
+    # TODO: Try to map version to a journal version if the startIds are not equal
+    @startId (startId) ->
+      if clientStartId != startId
+        return callback fatalErr: "clientStartId != startId (#{clientStartId} != #{startId})"
+      callback null
 
   unregisterClient: (clientId, callback) ->
     @_redisClient.del 'txnClock.' + clientId, callback
