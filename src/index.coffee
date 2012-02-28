@@ -94,8 +94,7 @@ JournalRedis::=
     return false
 
   unregisterClient: (clientId, callback) ->
-    @_redisClient.del 'txnClock.' + clientId, (err, val) ->
-      callback err
+    @_redisClient.del 'txnClock.' + clientId, callback
 
   txnsSince: (ver, clientId, pubSub, callback) ->
     return callback [] unless pubSub.hasSubscriptions clientId
@@ -115,9 +114,7 @@ JournalRedis::=
       callback txns
 
   nextTxnNum: (clientId, callback) ->
-    @_redisClient.incr 'txnClock.' + clientId, (err, value) ->
-      return callback err if err
-      callback null, value
+    @_redisClient.incr 'txnClock.' + clientId, callback
 
   _lwwCommitFn: (store) ->
     redisClient = @_redisClient
