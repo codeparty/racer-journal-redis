@@ -42,8 +42,9 @@ module.exports =
               return client.unwatch 'starts', ->
                 getStarts client, callback
 
-            console.error 'WARNING: Redis server does not have any record of ' +
-              'being started by the Racer Redis loader.'
+            # TODO: Log this once the racer redis loader is written
+            # console.error 'WARNING: Redis server does not have any record of ' +
+            #   'being started by the Racer Redis loader.'
 
             # Initialize the value for starts if it is empty
             setStarts client, 0, 0, ->

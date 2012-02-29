@@ -1,9 +1,9 @@
-{expect, calls} = require 'racer/test/util'
-redisInfo = require '../src/redisInfo'
 redis = require 'redis'
+{expect} = require 'racer/test/util'
+redisInfo = require '../src/redisInfo'
 
 describe 'redisInfo', ->
-  # Silence console errors in testing
+  # Capture console errors in testing
   __consoleError = console.error
 
   checkFirstStart = (starts) ->
@@ -34,12 +34,13 @@ describe 'redisInfo', ->
       checkFirstStart starts
       done()
   
-  it 'getStarts should log an error on an uninitialized Redis instance', (done) ->
-    console.error = (message) ->
-      expect(message).to.be.a 'string'
-      console.error = __consoleError
-      done()
-    redisInfo._getStarts client, ->
+  # TODO: Uncomment once the racer redis loader is written
+  # it 'getStarts should log an error on an uninitialized Redis instance', (done) ->
+  #   console.error = (message) ->
+  #     expect(message).to.be.a 'string'
+  #     console.error = __consoleError
+  #     done()
+  #   redisInfo._getStarts client, ->
   
   it 'calling getStarts multiple times should work after calling onStart', (done) ->
     redisInfo.onStart client, ->

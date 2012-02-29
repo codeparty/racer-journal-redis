@@ -1,8 +1,6 @@
 redis = require 'redis'
 redisInfo = require './redisInfo'
-transaction = null
-Serializer = null
-Promise = null
+transaction = Serializer = Promise = null
 
 module.exports = (racer) ->
   {transaction, Serializer, Promise} = racer
@@ -75,9 +73,9 @@ JournalRedis::=
 
   startId: (callback) -> @_startIdPromise.on callback
 
-  getVer: (callback) -> @_redisClient.get 'ver', callback
+  version: (callback) -> @_redisClient.get 'ver', callback
 
-  checkVer: (ver, clientStartId, callback) ->
+  checkVersion: (ver, clientStartId, callback) ->
     # TODO: Try to map version to a journal version if the startIds are not equal
     @startId (startId) ->
       if clientStartId != startId
@@ -107,6 +105,8 @@ JournalRedis::=
   nextTxnNum: (clientId, callback) ->
     @_redisClient.incr 'txnClock.' + clientId, callback
 
+  commitFn: (store, mode) -> @["_#{mode}CommitFn"] store
+
   _lwwCommitFn: (store) ->
     redisClient = @_redisClient
 
@@ -135,8 +135,6 @@ JournalRedis::=
       self._stmCommit lockQueue, txn, (err, ver) ->
         return callback && callback err, txn if err
         txnApplier.add txn, ver, callback
-
-  commitFn: (store, mode) -> @["_#{mode}CommitFn"] store
 
   _stmCommit: (lockQueue, txn, callback) ->
     self = this
