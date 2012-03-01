@@ -75,32 +75,25 @@ JournalRedis::=
 
   version: (callback) -> @_redisClient.get 'ver', callback
 
-  checkVersion: (ver, clientStartId, callback) ->
-    # TODO: Try to map version to a journal version if the startIds are not equal
-    @startId (startId) ->
-      if clientStartId != startId
-        return callback fatalErr: "clientStartId != startId (#{clientStartId} != #{startId})"
-      callback null
-
   unregisterClient: (clientId, callback) ->
     @_redisClient.del 'txnClock.' + clientId, callback
 
   txnsSince: (ver, clientId, pubSub, callback) ->
-    return callback [] unless pubSub.hasSubscriptions clientId
+    return callback null, []  unless pubSub.hasSubscriptions clientId
 
     # TODO Replace with a LUA script that does filtering?
     @_redisClient.zrangebyscore 'txns', ver, '+inf', 'withscores', (err, vals) ->
-      throw err if err
+      return callback err  if err
       txn = null
       txns = []
       for val, i in vals
         if i % 2
-          continue unless pubSub.subscribedToTxn clientId, txn
+          continue unless pubSub.subscribedTo clientId, transaction.path(txn)
           transaction.base txn, +val
           txns.push txn
         else
           txn = JSON.parse val
-      callback txns
+      callback null, txns
 
   nextTxnNum: (clientId, callback) ->
     @_redisClient.incr 'txnClock.' + clientId, callback
@@ -129,8 +122,8 @@ JournalRedis::=
     self = this
     return (txn, callback) ->
       ver = transaction.base txn
-      if ver && typeof ver isnt 'number'
-        # In case of something like @set(path, value, callback)
+      if typeof ver isnt 'number' && ver?
+        # In case of something like store.set(path, value, callback)
         return callback new Error 'Version must be null or a number'
       self._stmCommit lockQueue, txn, (err, ver) ->
         return callback && callback err, txn if err
@@ -199,7 +192,8 @@ JournalRedis::=
 journalConflict = (txn, txns) ->
   i = txns.length
   while i--
-    return value if value = transaction.conflict txn, JSON.parse(txns[i])
+    if err = transaction.conflict txn, JSON.parse(txns[i])
+      return err
   return false
 
 # Example output:

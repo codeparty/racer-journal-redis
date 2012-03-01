@@ -1,1 +1,1 @@
-require('racer/test/util/journalAdapter') {type: 'Redis'}, require('../src')
+require('racer/test/journalAdapter') {type: 'Redis'}, require('../src')
