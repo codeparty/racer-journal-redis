@@ -73,7 +73,9 @@ JournalRedis::=
 
   startId: (callback) -> @_startIdPromise.on callback
 
-  version: (callback) -> @_redisClient.get 'ver', callback
+  version: (callback) -> @_redisClient.get 'ver', (err, ver) ->
+    return callback err if err
+    callback null, parseInt(ver, 10)
 
   unregisterClient: (clientId, callback) ->
     @_redisClient.del 'txnClock.' + clientId, callback
