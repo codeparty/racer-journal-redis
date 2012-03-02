@@ -1,8 +1,8 @@
-{run} = require 'racer/test/util/store'
 {expect} = require 'racer/test/util'
 
-require('racer/test/journalAdapter') {type: 'Redis'}, require('../src'), moreTests = ->
-  run 'journal flushing', {mode: 'stm', journal: { type: 'Redis'} }, (getStore) ->
+require('racer/test/journalAdapter') {type: 'Redis'}, require('../src'), (run) ->
+
+  run 'Redis journal flushing', (getStore) ->
     it 'should delete all redis client keys', (done) ->
       store = getStore()
       store.set 'color', 'green', 1, ->
