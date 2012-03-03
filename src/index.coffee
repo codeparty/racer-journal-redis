@@ -56,14 +56,13 @@ JournalRedis = (options) ->
 
 JournalRedis::=
   flush: (callback) ->
-    self = this
-    redisClient = self._redisClient
+    redisClient = @_redisClient
     # TODO Be more granular about this. Remove ind keys instead of flushdb
-    redisClient.flushdb (err) ->
+    redisClient.flushdb (err) =>
       return callback err if err
-      redisInfo.onStart redisClient, (err) ->
+      redisInfo.onStart redisClient, (err) =>
         return callback err if err
-        startIdPromise = self._startIdPromise
+        startIdPromise = @_startIdPromise
         startIdPromise.clearValue() if startIdPromise?.fulfilled
         callback null
 
@@ -71,11 +70,13 @@ JournalRedis::=
     @_redisClient.end()
     @_subClient.end()
 
-  startId: (callback) -> @_startIdPromise.on callback
+  startId: (callback) ->
+    @_startIdPromise.on callback
 
-  version: (callback) -> @_redisClient.get 'ver', (err, ver) ->
-    return callback err if err
-    callback null, parseInt(ver, 10)
+  version: (callback) ->
+    @_redisClient.get 'ver', (err, ver) ->
+      return callback err if err
+      callback null, parseInt(ver, 10)
 
   unregisterClient: (clientId, callback) ->
     @_redisClient.del 'txnClock.' + clientId, callback
@@ -100,7 +101,8 @@ JournalRedis::=
   nextTxnNum: (clientId, callback) ->
     @_redisClient.incr 'txnClock.' + clientId, callback
 
-  commitFn: (store, mode) -> @["_#{mode}CommitFn"] store
+  commitFn: (store, mode) ->
+    @["_#{mode}CommitFn"] store
 
   _lwwCommitFn: (store) ->
     redisClient = @_redisClient
@@ -121,60 +123,58 @@ JournalRedis::=
         store._finishCommit txn, ver, callback
 
     lockQueue = {}
-    self = this
-    return (txn, callback) ->
+    return (txn, callback) =>
       ver = transaction.base txn
       if typeof ver isnt 'number' && ver?
         # In case of something like store.set(path, value, callback)
         return callback new Error 'Version must be null or a number'
-      self._stmCommit lockQueue, txn, (err, ver) ->
+      @_stmCommit lockQueue, txn, (err, ver) =>
         return callback && callback err, txn if err
         txnApplier.add txn, ver, callback
 
   _stmCommit: (lockQueue, txn, callback) ->
-    self = this
-    redisClient = self._redisClient
+    redisClient = @_redisClient
     # If the base of a transaction is null or undefined, pass an empty string
     # for sinceVer, which indicates not to return a journal. Thus, no conflicts
     # will be found
     base = transaction.base txn
     sinceVer = if `base == null` then '' else base + 1
     if transaction.isCompound txn
-      paths = transaction.ops(txn).map (op) -> transaction.op.path op
+      paths = (transaction.op.path op for op in transaction.ops txn)
     else
       paths = [transaction.path txn]
-    locks = paths.reduce (locks, path) ->
-      getLocks(path).forEach (lock) ->
-        locks.push lock if -1 == locks.indexOf lock
-      locks
-    , []
-    self._lock lockQueue, locks, sinceVer, paths, MAX_RETRIES, RETRY_DELAY, (err, numLocks, lockVal, txns) ->
+
+    locks = []
+    for path in paths
+      for lock in getLocks path
+        locks.push lock  if locks.indexOf(lock) == -1
+
+    @_lock lockQueue, locks, sinceVer, paths, MAX_RETRIES, RETRY_DELAY, (err, numLocks, lockVal, txns) =>
       path = paths[0]
       return callback err if err
 
       # Check the new transaction against all transactions in the journal
       # since one after the transaction's base version
       if txns && conflict = journalConflict txn, txns
-        return redisClient.eval UNLOCK, numLocks, locks..., lockVal, (err) ->
+        return redisClient.eval UNLOCK, numLocks, locks..., lockVal, (err) =>
           return callback err if err
           callback conflict
 
       # Commit if there are no conflicts and the locks are still held
-      redisClient.eval LOCKED_COMMIT, numLocks, locks..., lockVal, JSON.stringify(txn), (err, ver) ->
+      redisClient.eval LOCKED_COMMIT, numLocks, locks..., lockVal, JSON.stringify(txn), (err, ver) =>
         return callback err if err
         return callback 'lockReleased' if ver is 0
         callback null, ver
 
         # If another transaction failed to lock because of this transaction,
         # shift it from the queue
-        self._lock args... if (queue = lockQueue[path]) && args = queue.shift()
+        @_lock args... if (queue = lockQueue[path]) && args = queue.shift()
 
   _lock: (lockQueue, locks, sinceVer, path, retries, delay, callback) ->
-    self = this
-    redisClient = self._redisClient
+    redisClient = @_redisClient
     # Callback has signature: fn(err, lockVal, txns)
     numKeys = locks.length
-    redisClient.eval LOCK, numKeys, locks..., sinceVer, (err, values) ->
+    redisClient.eval LOCK, numKeys, locks..., sinceVer, (err, values) =>
       return callback err if err
       if values[0]
         return callback null, numKeys, values[0], values[1]
@@ -185,8 +185,8 @@ JournalRedis::=
         queue.push [lockQueue, locks, sinceVer, path, retries - 1, delay * 2, callback]
         # Use an exponential timeout in case the conflict is because of a lock
         # on a child path or is coming from a different server
-        return setTimeout ->
-          self._lock args... if args = lockQueue[path].shift()
+        return setTimeout =>
+          @_lock args... if args = lockQueue[path].shift()
         , delay
       return callback 'lockMaxRetries', numLocks
 
