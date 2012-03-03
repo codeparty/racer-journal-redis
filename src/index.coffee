@@ -101,36 +101,7 @@ JournalRedis::=
   nextTxnNum: (clientId, callback) ->
     @_redisClient.incr 'txnClock.' + clientId, callback
 
-  commitFn: (store, mode) ->
-    @["_#{mode}CommitFn"] store
-
-  _lwwCommitFn: (store) ->
-    redisClient = @_redisClient
-
-    return (txn, callback) ->
-      # Increment version and store the transaction with a
-      # score of the new version
-      redisClient.eval LWW_COMMIT, 0, JSON.stringify(txn), (err, ver) ->
-        return callback err if err
-        store._finishCommit txn, ver, callback
-
-  _stmCommitFn: (store) ->
-    ## Ensure Serialization of Transactions to the DB ##
-    # TODO: This algorithm will need to change when we go multi-process,
-    # because we can't count on the version to increase sequentially
-    txnApplier = new Serializer
-      withEach: (txn, ver, callback) ->
-        store._finishCommit txn, ver, callback
-
-    lockQueue = {}
-    return (txn, callback) =>
-      ver = transaction.base txn
-      if typeof ver isnt 'number' && ver?
-        # In case of something like store.set(path, value, callback)
-        return callback new Error 'Version must be null or a number'
-      @_stmCommit lockQueue, txn, (err, ver) =>
-        return callback && callback err, txn if err
-        txnApplier.add txn, ver, callback
+  commitFn: (store, mode) -> commitFns[mode] this, store
 
   _stmCommit: (lockQueue, txn, callback) ->
     redisClient = @_redisClient
@@ -189,6 +160,36 @@ JournalRedis::=
           @_lock args... if args = lockQueue[path].shift()
         , delay
       return callback 'lockMaxRetries', numLocks
+
+
+commitFns =
+  lww: (self, store) ->
+    redisClient = self._redisClient
+
+    return (txn, callback) ->
+      # Increment version and store the transaction with a
+      # score of the new version
+      redisClient.eval LWW_COMMIT, 0, JSON.stringify(txn), (err, ver) ->
+        return callback err if err
+        store._finishCommit txn, ver, callback
+
+  stm: (self, store) ->
+    ## Ensure Serialization of Transactions to the DB ##
+    # TODO: This algorithm will need to change when we go multi-process,
+    # because we can't count on the version to increase sequentially
+    txnApplier = new Serializer
+      withEach: (txn, ver, callback) ->
+        store._finishCommit txn, ver, callback
+
+    lockQueue = {}
+    return (txn, callback) ->
+      ver = transaction.base txn
+      if typeof ver isnt 'number' && ver?
+        # In case of something like store.set(path, value, callback)
+        return callback new Error 'Version must be null or a number'
+      self._stmCommit lockQueue, txn, (err, ver) =>
+        return callback && callback err, txn if err
+        txnApplier.add txn, ver, callback
 
 
 journalConflict = (txn, txns) ->
