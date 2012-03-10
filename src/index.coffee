@@ -38,11 +38,12 @@ JournalRedis = (options) ->
         throw err if err
         subscribeToStarts()
 
-    redisInfo.subscribeToStarts subClient, redisClient, (starts) ->
+    redisInfo.subscribeToStarts subClient, redisClient, (err, starts) ->
+      throw err if err
       redisStarts = starts
       {0: firstStart} = starts
       [startId] = firstStart
-      startIdPromise.clear().resolve startId
+      startIdPromise.clear().resolve null, startId
 
   # Ignore the first connect event
   ignoreSubscribe = true

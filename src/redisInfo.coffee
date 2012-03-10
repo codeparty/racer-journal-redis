@@ -1,12 +1,3 @@
-# TODO Remove this
-setStarts = (client, startsLength, ver, callback) ->
-  client.multi()
-    .lpush('starts', "#{+new Date}.#{startsLength},#{ver}")
-    .publish('$redisInfo', 'starts')
-    .exec (err) ->
-      throw err if err
-      callback null if callback
-
 module.exports =
   # This function should be called once when the Redis server restarts.
   # It is meant to be called by the process that starts the Redis server,
@@ -25,16 +16,16 @@ module.exports =
 
   _getStarts: getStarts = (client, callback) ->
     client.lrange 'starts', 0, -1, (err, starts) ->
-      throw err if err
+      return callback err if err
       if starts.length is 0
         # If Redis has no record of being started by the Racer loader, assign
         # a start value with a version of 0. Note that multiple Store instances
         # may all try to do this at once, so this code uses a watch / multi
         # block to make sure only one client does this.
         return client.watch 'starts', (err) ->
-          throw err if err
+          return callback err if err
           client.llen 'starts', (err, value) ->
-            throw err if err
+            return callback err if err
             if value > 0
               # If another call to starts has already set the value between
               # the time that the first lrange command was sent and the watch
@@ -47,11 +38,12 @@ module.exports =
             #   'being started by the Racer Redis loader.'
 
             # Initialize the value for starts if it is empty
-            setStarts client, 0, 0, ->
+            setStarts client, 0, 0, (err) ->
+              return callback err if err
               getStarts client, callback
       # Return a list in the format [[startId, ver], ...] in order of most
       # recent start to least recent start
-      callback (start.split ',' for start in starts)
+      callback null, (start.split ',' for start in starts)
 
   # This function is intended to be called by the Store when it first connects
   # to the Redis server. It will call the callback with the value of starts
@@ -64,3 +56,10 @@ module.exports =
         getStarts client, callback
     subClient.subscribe '$redisInfo'
     getStarts client, callback
+
+
+setStarts = (client, startsLength, ver, callback) ->
+  client.multi()
+    .lpush('starts', "#{+new Date}.#{startsLength},#{ver}")
+    .publish('$redisInfo', 'starts')
+    .exec callback
