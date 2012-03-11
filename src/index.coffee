@@ -38,32 +38,32 @@ JournalRedis = (options) ->
         throw err if err
         subscribeToStarts()
 
-    redisInfo.subscribeToStarts subClient, redisClient, (starts) ->
+    redisInfo.subscribeToStarts subClient, redisClient, (err, starts) ->
+      throw err if err
       redisStarts = starts
-      startIdPromise.clearValue() if startIdPromise.value
       {0: firstStart} = starts
       [startId] = firstStart
-      startIdPromise.resolve null, startId
+      startIdPromise.clear().resolve null, startId
 
   # Ignore the first connect event
   ignoreSubscribe = true
   redisClient.on 'connect', subscribeToStarts
   redisClient.on 'end', ->
     redisStarts = null
-    startIdPromise.clearValue()
+    startIdPromise.clear()
 
   return
 
 JournalRedis::=
   flush: (callback) ->
     redisClient = @_redisClient
+    startIdPromise = @_startIdPromise
     # TODO Be more granular about this. Remove ind keys instead of flushdb
-    redisClient.flushdb (err) =>
+    redisClient.flushdb (err) ->
       return callback err if err
-      redisInfo.onStart redisClient, (err) =>
+      redisInfo.onStart redisClient, (err) ->
         return callback err if err
-        startIdPromise = @_startIdPromise
-        startIdPromise.clearValue() if startIdPromise?.resolved
+        startIdPromise.clear()
         callback null
 
   disconnect: ->

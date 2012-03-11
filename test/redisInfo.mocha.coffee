@@ -30,7 +30,8 @@ describe 'redisInfo', ->
       done()
   
   it 'getStarts should work with an uninitialized Redis instance', (done) ->
-    redisInfo._getStarts client, (starts) ->
+    redisInfo._getStarts client, (err, starts) ->
+      expect(err).to.be.null()
       checkFirstStart starts
       done()
   
@@ -48,10 +49,12 @@ describe 'redisInfo', ->
         starts1 = (start.split ',' for start in starts)
         # Delay to make sure start timestamp is different if it gets reset
         setTimeout ->
-          redisInfo._getStarts client, (starts2) ->
+          redisInfo._getStarts client, (err, starts2) ->
+            expect(err).to.be.null()
             expect(starts1).to.eql starts2
             setTimeout ->
-              redisInfo._getStarts client, (starts3) ->
+              redisInfo._getStarts client, (err, starts3) ->
+                expect(err).to.be.null()
                 expect(starts1).to.eql starts3
                 done()
             , 10
@@ -61,21 +64,24 @@ describe 'redisInfo', ->
     client.set 'ver', 7, ->
       redisInfo.onStart client, ->
         client.set 'ver', 13, ->
-          redisInfo._getStarts client, (starts) ->
+          redisInfo._getStarts client, (err, starts) ->
+            expect(err).to.be.null()
             ver = starts[0][1]
             expect(ver).to.eql '7'
             done()
   
   it 'subscribeToStarts should return a list of starts immediately', (done) ->
     redisInfo.onStart client, ->
-      redisInfo.subscribeToStarts subClient, client, (starts) ->
+      redisInfo.subscribeToStarts subClient, client, (err, starts) ->
+        expect(err).to.be.null()
         checkFirstStart starts
         done()
   
   it 'subscribeToStarts should callback on set of starts', (done) ->
     redisInfo.onStart client, ->
       count = 0
-      redisInfo.subscribeToStarts subClient, client, (starts) ->
+      redisInfo.subscribeToStarts subClient, client, (err, starts) ->
+        expect(err).to.be.null()
         return checkFirstStart starts unless count++
         expect(starts.length).to.eql 2
         startId = starts[0][0]
