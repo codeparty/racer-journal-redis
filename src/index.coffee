@@ -43,7 +43,7 @@ JournalRedis = (options) ->
       startIdPromise.clearValue() if startIdPromise.value
       {0: firstStart} = starts
       [startId] = firstStart
-      startIdPromise.fulfill startId
+      startIdPromise.resolve null, startId
 
   # Ignore the first connect event
   ignoreSubscribe = true
@@ -63,7 +63,7 @@ JournalRedis::=
       redisInfo.onStart redisClient, (err) =>
         return callback err if err
         startIdPromise = @_startIdPromise
-        startIdPromise.clearValue() if startIdPromise?.fulfilled
+        startIdPromise.clearValue() if startIdPromise?.resolved
         callback null
 
   disconnect: ->
