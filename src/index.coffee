@@ -91,8 +91,8 @@ JournalRedis::=
       txns = []
       for val, i in vals
         if i % 2
-          continue unless pubSub.subscribedTo clientId, transaction.path(txn)
-          transaction.base txn, +val
+          continue unless pubSub.subscribedTo clientId, transaction.getPath(txn)
+          transaction.setVer txn, +val
           txns.push txn
         else
           txn = JSON.parse val
@@ -105,15 +105,15 @@ JournalRedis::=
 
   _stmCommit: (lockQueue, txn, callback) ->
     redisClient = @_redisClient
-    # If the base of a transaction is null or undefined, pass an empty string
+    # If the ver of a transaction is null or undefined, pass an empty string
     # for sinceVer, which indicates not to return a journal. Thus, no conflicts
     # will be found
-    base = transaction.base txn
-    sinceVer = if `base == null` then '' else base + 1
+    ver = transaction.getVer txn
+    sinceVer = if `ver == null` then '' else ver + 1
     if transaction.isCompound txn
-      paths = (transaction.op.path op for op in transaction.ops txn)
+      paths = (transaction.op.getPath op for op in transaction.ops txn)
     else
-      paths = [transaction.path txn]
+      paths = [transaction.getPath txn]
 
     locks = []
     for path in paths
@@ -125,7 +125,7 @@ JournalRedis::=
       return callback err if err
 
       # Check the new transaction against all transactions in the journal
-      # since one after the transaction's base version
+      # since one after the transaction's version
       if txns && conflict = journalConflict txn, txns
         return redisClient.eval UNLOCK, numLocks, locks..., lockVal, (err) =>
           return callback err if err
@@ -183,7 +183,7 @@ commitFns =
 
     lockQueue = {}
     return (txn, callback) ->
-      ver = transaction.base txn
+      ver = transaction.getVer txn
       if typeof ver isnt 'number' && ver?
         # In case of something like store.set(path, value, callback)
         return callback new Error 'Version must be null or a number'
