@@ -3,6 +3,9 @@
   "description": "Redis journal plugin for Racer",
   "version": "0.0.1",
   "main": "./lib/index.js",
+  "scripts": {
+    "prepublish": "./scripts/prepublish"
+  },
   "dependencies": {
     "redis": ">=0.7.1"
   },

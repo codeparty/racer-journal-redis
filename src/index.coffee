@@ -2,9 +2,11 @@ redis = require 'redis'
 redisInfo = require './redisInfo'
 transaction = Serializer = Promise = null
 
-module.exports = (racer) ->
+exports = module.exports = (racer) ->
   {transaction, Serializer, Promise} = racer
   racer.adapters.journal.Redis = JournalRedis
+
+exports.useWith = server: true, browser: false
 
 JournalRedis = (options) ->
 

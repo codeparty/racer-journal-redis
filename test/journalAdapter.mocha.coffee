@@ -1,10 +1,25 @@
 {expect} = require 'racer/test/util'
+racer = require 'racer'
+shouldBehaveLikeJournalAdapter = require 'racer/test/journalAdapter'
 
-require('racer/test/journalAdapter') {type: 'Redis'}, require('../src'), (run) ->
+plugin = require('../src')
 
-  run 'Redis journal flushing', (getStore) ->
+options = journal: type: 'Redis'
+
+describe 'Redis journal adapter', ->
+  shouldBehaveLikeJournalAdapter options, [plugin]
+
+  describe 'deletion', ->
+    beforeEach (done) ->
+      racer.use plugin
+      @store = racer.createStore journal: type: 'Redis'
+      @store.flush done
+
+    afterEach (done) ->
+      @store.flush done
+
     it 'should delete all redis client keys', (done) ->
-      store = getStore()
+      store = @store
       store.set 'color', 'green', 1, ->
         redisClient = store._journal._redisClient
         redisClient.keys '*', (err, value) ->
