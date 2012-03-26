@@ -1,9 +1,10 @@
 redis = require 'redis'
 redisInfo = require './redisInfo'
-transaction = Serializer = Promise = null
+transaction = require 'racer/lib/transaction'
+Serializer = require 'racer/lib/Serializer'
+Promise = require 'racer/lib/Promise'
 
 exports = module.exports = (racer) ->
-  {transaction, Serializer, Promise} = racer
   racer.registerAdapter 'journal', 'Redis', JournalRedis
 
 exports.useWith = server: true, browser: false
