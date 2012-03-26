@@ -1,6 +1,7 @@
 redis = require 'redis'
 {expect} = require 'racer/test/util'
-{transaction} = racer = require 'racer'
+transaction = require 'racer/lib/transaction'
+racer = require 'racer'
 
 plugin = require '../src'
 racer.use plugin
