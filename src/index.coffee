@@ -4,11 +4,11 @@ transaction = Serializer = Promise = null
 
 exports = module.exports = (racer) ->
   {transaction, Serializer, Promise} = racer
-  racer.adapters.journal.Redis = JournalRedis
+  racer.registerAdapter 'journal', 'Redis', JournalRedis
 
 exports.useWith = server: true, browser: false
 
-JournalRedis = (options) ->
+exports.JournalRedis = JournalRedis = (options) ->
 
   {port, host, db, password} = options
   # Client for data access and event publishing
