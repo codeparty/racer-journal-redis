@@ -81,9 +81,6 @@ JournalRedis::=
       return callback err if err
       callback null, parseInt(ver, 10)
 
-  unregisterClient: (clientId, callback) ->
-    @_redisClient.del 'txnClock.' + clientId, callback
-
   txnsSince: (ver, clientId, pubSub, callback) ->
     return callback null, []  unless pubSub.hasSubscriptions clientId
 
@@ -100,9 +97,6 @@ JournalRedis::=
         else
           txn = JSON.parse val
       callback null, txns
-
-  nextTxnNum: (clientId, callback) ->
-    @_redisClient.incr 'txnClock.' + clientId, callback
 
   commitFn: (store, mode) -> commitFns[mode] this, store
 
