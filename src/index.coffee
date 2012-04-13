@@ -4,12 +4,7 @@ transaction = require 'racer/lib/transaction'
 Serializer = require 'racer/lib/Serializer'
 Promise = require 'racer/lib/Promise'
 
-exports = module.exports = (racer) ->
-  racer.registerAdapter 'journal', 'Redis', JournalRedis
-
-exports.useWith = server: true, browser: false
-
-exports.JournalRedis = JournalRedis = (options) ->
+module.exports = JournalRedis = (options) ->
 
   {port, host, db, password} = options
   # Client for data access and event publishing
@@ -23,6 +18,8 @@ exports.JournalRedis = JournalRedis = (options) ->
     subClient.auth password, throwOnErr
 
   @_startIdPromise = startIdPromise = new Promise
+
+  @_lockQueue = {}
 
   # TODO: Make sure there are no weird race conditions here, since we are
   # caching the value of starts and it could potentially be stale when a
@@ -58,35 +55,35 @@ exports.JournalRedis = JournalRedis = (options) ->
   return
 
 JournalRedis::=
-  flush: (callback) ->
+  flush: (cb) ->
     redisClient = @_redisClient
     startIdPromise = @_startIdPromise
     # TODO Be more granular about this. Remove ind keys instead of flushdb
     redisClient.flushdb (err) ->
-      return callback err if err
+      return cb err if err
       redisInfo.onStart redisClient, (err) ->
-        return callback err if err
+        return cb err if err
         startIdPromise.clear()
-        callback null
+        cb null
 
   disconnect: ->
     @_redisClient.end()
     @_subClient.end()
 
-  startId: (callback) ->
-    @_startIdPromise.on callback
+  startId: (cb) ->
+    @_startIdPromise.on cb
 
-  version: (callback) ->
+  version: (cb) ->
     @_redisClient.get 'ver', (err, ver) ->
-      return callback err if err
-      callback null, parseInt(ver, 10)
+      return cb err if err
+      cb null, parseInt(ver, 10)
 
-  txnsSince: (ver, clientId, pubSub, callback) ->
-    return callback null, []  unless pubSub.hasSubscriptions clientId
+  txnsSince: (ver, clientId, pubSub, cb) ->
+    return cb null, []  unless pubSub.hasSubscriptions clientId
 
     # TODO Replace with a LUA script that does filtering?
     @_redisClient.zrangebyscore 'txns', ver, '+inf', 'withscores', (err, vals) ->
-      return callback err  if err
+      return cb err  if err
       txn = null
       txns = []
       for val, i in vals
@@ -96,16 +93,14 @@ JournalRedis::=
           txns.push txn
         else
           txn = JSON.parse val
-      callback null, txns
+      cb null, txns
 
-  commitFn: (store, mode) -> commitFns[mode] this, store
-
-  _stmCommit: (lockQueue, txn, callback) ->
+  eachTxnSince: (ver, opts) ->
     redisClient = @_redisClient
+    {meta: {txn}, each, done} = opts
     # If the ver of a transaction is null or undefined, pass an empty string
     # for sinceVer, which indicates not to return a journal. Thus, no conflicts
     # will be found
-    ver = transaction.getVer txn
     sinceVer = if `ver == null` then '' else ver + 1
     if transaction.isCompound txn
       paths = (transaction.op.getPath op for op in transaction.ops txn)
@@ -117,84 +112,62 @@ JournalRedis::=
       for lock in getLocks path
         locks.push lock  if locks.indexOf(lock) == -1
 
-    @_lock lockQueue, locks, sinceVer, paths, MAX_RETRIES, RETRY_DELAY, (err, numLocks, lockVal, txns) =>
+    @_lock locks, sinceVer, paths, MAX_RETRIES, RETRY_DELAY, (err, numLocks, lockVal, txns) =>
       path = paths[0]
-      return callback err if err
 
-      # Check the new transaction against all transactions in the journal
-      # since one after the transaction's version
-      if txns && conflict = journalConflict txn, txns
-        return redisClient.eval UNLOCK, numLocks, locks..., lockVal, (err) =>
-          return callback err if err
-          callback conflict
+      return done null, {numLocks, locks, lockVal} unless i = txns?.length
 
-      # Commit if there are no conflicts and the locks are still held
-      redisClient.eval LOCKED_COMMIT, numLocks, locks..., lockVal, JSON.stringify(txn), (err, ver) =>
-        return callback err if err
-        return callback 'lockReleased' if ver is 0
-        callback null, ver
+      next = (err) ->
+        if err
+          if err == 'conflict' || err == 'duplicate'
+            return redisClient.eval UNLOCK, numLocks, locks..., lockVal, (unlockErr) =>
+              return done(if unlockErr then unlockErr else err)
+          else
+            return done err
+        if txn = txns[--i]
+          return each null, JSON.parse(txn), next
+        return done null, {numLocks, locks, lockVal}
 
-        # If another transaction failed to lock because of this transaction,
-        # shift it from the queue
-        @_lock args... if (queue = lockQueue[path]) && args = queue.shift()
+      next()
 
-  _lock: (lockQueue, locks, sinceVer, path, retries, delay, callback) ->
-    redisClient = @_redisClient
+  add: (txn, {numLocks, locks, lockVal}, cb) ->
+    # Commit if there are no conflicts and the locks are still held
+    @_redisClient.eval LOCKED_COMMIT, numLocks, locks..., lockVal, JSON.stringify(txn), (err, ver) =>
+      return cb err if err
+      return cb 'lockReleased' if ver is 0
+      cb null, ver
+
+      path = transaction.getPath txn
+      # If another transaction failed to lock because of this transaction,
+      # shift it from the queue
+      @_tryNextLock path
+
+  _tryNextLock: (path) ->
+    return unless queue = @_lockQueue[path]
+    if args = queue.shift()
+      unless queue.length
+        delete @_lockQueue[path]
+      @_lock args...
+
+  _lock: (locks, sinceVer, path, retries, delay, cb) ->
     # Callback has signature: fn(err, lockVal, txns)
     numKeys = locks.length
-    redisClient.eval LOCK, numKeys, locks..., sinceVer, (err, values) =>
-      return callback err if err
-      if values[0]
-        return callback null, numKeys, values[0], values[1]
+    @_redisClient.eval LOCK, numKeys, locks..., sinceVer, (err, [lockVal, txns]) =>
+      return cb err if err
+      if lockVal
+        return cb null, numKeys, lockVal, txns
       if retries
-        queue = lockQueue[path] ||= []
+        queue = @_lockQueue[path] ||= []
         # Maintain a queue so that if this lock conflicts with another operation
         # on the same server and the same path, the lock can be retried immediately
-        queue.push [lockQueue, locks, sinceVer, path, retries - 1, delay * 2, callback]
+        queue.push [locks, sinceVer, path, retries - 1, delay * 2, cb]
         # Use an exponential timeout in case the conflict is because of a lock
         # on a child path or is coming from a different server
         return setTimeout =>
-          @_lock args... if args = lockQueue[path].shift()
+          @_tryNextLock path
+          @_lock args... if args = queue.shift()
         , delay
-      return callback 'lockMaxRetries', numLocks
-
-
-commitFns =
-  lww: (self, store) ->
-    redisClient = self._redisClient
-
-    return (txn, callback) ->
-      # Increment version and store the transaction with a
-      # score of the new version
-      redisClient.eval LWW_COMMIT, 0, JSON.stringify(txn), (err, ver) ->
-        return callback err if err
-        store._finishCommit txn, ver, callback
-
-  stm: (self, store) ->
-    ## Ensure Serialization of Transactions to the DB ##
-    # TODO: This algorithm will need to change when we go multi-process,
-    # because we can't count on the version to increase sequentially
-    txnApplier = new Serializer
-      withEach: (txn, ver, callback) ->
-        store._finishCommit txn, ver, callback
-
-    lockQueue = {}
-    return (txn, callback) ->
-      ver = transaction.getVer txn
-      if typeof ver isnt 'number' && ver?
-        # In case of something like store.set(path, value, callback)
-        return callback new Error 'Version must be null or a number'
-      self._stmCommit lockQueue, txn, (err, ver) =>
-        return callback && callback err, txn if err
-        txnApplier.add txn, ver, callback
-
-
-journalConflict = (txn, txns) ->
-  i = txns.length
-  while i--
-    if err = transaction.conflict txn, JSON.parse(txns[i])
-      return err
-  return false
+      return cb 'lockMaxRetries', numLocks
 
 # Example output:
 # getLocks("a.b.c") => [".a.b.c", ".a.b", ".a"]
@@ -277,11 +250,5 @@ end
 if fail then return 0 end
 local ver = redis.call('incr', 'ver')
 redis.call('zadd', 'txns', ver, ARGV[2])
-return ver
-"""
-
-JournalRedis.LWW_COMMIT = LWW_COMMIT = """
-local ver = redis.call('incr', 'ver')
-redis.call('zadd', 'txns', ver, ARGV[1])
 return ver
 """

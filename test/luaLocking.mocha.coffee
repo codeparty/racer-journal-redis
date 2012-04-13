@@ -3,8 +3,7 @@ redis = require 'redis'
 transaction = require 'racer/lib/transaction'
 racer = require 'racer'
 
-plugin = require '../src'
-racer.use plugin
+JournalRedis = require '../src'
 
 describe 'Lua locking', ->
 
@@ -15,7 +14,7 @@ describe 'Lua locking', ->
     LOCK_TIMEOUT_MASK
     LOCKED_COMMIT
     UNLOCK
-  } = plugin.JournalRedis
+  } = JournalRedis
 
   client = null
 
