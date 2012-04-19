@@ -1,11 +1,16 @@
 redis = require 'redis'
 redisInfo = require './redisInfo'
-transaction = require 'racer/lib/transaction'
-Serializer = require 'racer/lib/Serializer'
-Promise = require 'racer/lib/Promise'
+transaction = Serializer = Promise = null
 
-module.exports = JournalRedis = (options) ->
+exports = module.exports = (racer) ->
+  transaction = racer.protected.transaction
+  Serializer = racer.protected.Serializer
+  Promise = racer.util.Promise
+  racer.registerAdapter 'journal', 'Redis', JournalRedis
 
+exports.useWith = server: true, browser: false
+
+exports.JournalRedis = JournalRedis = (options) ->
   {port, host, db, password} = options
   # Client for data access and event publishing
   @_redisClient = redisClient = redis.createClient port, host, options

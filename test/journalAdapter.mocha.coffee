@@ -3,19 +3,18 @@ racer = require 'racer'
 shouldBehaveLikeJournalAdapter = require 'racer/test/journalAdapter'
 {augmentStoreOpts} = require 'racer/test/journalAdapter/util'
 
-JournalRedis = require('../src')
+plugin = require '../src'
 
 storeOpts =
   mode:
     #type: 'lww' || 'stm' # is provided by the options we merge into
     journal:
-      klass: JournalRedis
-      opts:
-        host: 'localhost'
-        db: 'test'
+      type: 'Redis'
+      host: 'localhost'
+      db: 'test'
 
 describe 'Redis journal adapter', ->
-  shouldBehaveLikeJournalAdapter storeOpts, []
+  shouldBehaveLikeJournalAdapter storeOpts, [plugin]
 
   describe 'deletion', ->
     beforeEach (done) ->

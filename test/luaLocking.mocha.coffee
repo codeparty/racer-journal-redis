@@ -3,7 +3,7 @@ redis = require 'redis'
 transaction = require 'racer/lib/transaction'
 racer = require 'racer'
 
-JournalRedis = require '../src'
+{JournalRedis} = require '../src'
 
 describe 'Lua locking', ->
 
