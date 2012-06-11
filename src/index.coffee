@@ -9,6 +9,7 @@ exports = module.exports = (racer) ->
   racer.registerAdapter 'journal', 'Redis', JournalRedis
 
 exports.useWith = server: true, browser: false
+exports.decorate = 'racer'
 
 exports.JournalRedis = JournalRedis = (options) ->
   {port, host, db, password} = options
