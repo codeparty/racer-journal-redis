@@ -1,7 +1,7 @@
 {
   "name": "racer-journal-redis",
   "description": "Redis journal plugin for Racer",
-  "version": "0.3.1",
+  "version": "0.3.11",
   "main": "./lib/index.js",
   "scripts": {
     "prepublish": "./scripts/prepublish"
